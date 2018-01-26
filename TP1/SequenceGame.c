@@ -6,8 +6,11 @@
 int yellow = 0; // ?????????
 int red = 1;
 
-int iYellow = 2;
-int iRed = 3;
+int bYellow = 2;
+int bRed = 3;
+
+int iYellow = 0;
+int iRed = 1;
   // ^ corresponding interrupters
 
 int good = 5; // ????????????
@@ -16,13 +19,13 @@ int bad = 6;
 
 // sequence
 #define N 4
-int seq[N];
-int attemptIx = 0; // always will be % N
+volatile int seq[N];
+volatile int attemptIx = 0; // always will be % N
 
 
 // state managers:
-bool attempting = false; // after showing sequence
-bool restart = false; // end game
+volatile bool attempting = false; // after showing sequence
+volatile bool restart = false; // end game
 
 
 
@@ -30,8 +33,8 @@ bool restart = false; // end game
 
 //:::::::::::::::::::::::
 
-srand(time(NULL));
-void randColorSeq(){
+
+int randColorSeq(){
   if (rand() % 2 == 0) {
     return yellow;
   }
@@ -57,39 +60,43 @@ void newSeq(){
 #define BLINK_RATE 300
 
 void showSeq(){
-  int i;
+  int i, which;
   for(i = 0; i < N; i++){
-    int which = seq[i];
+    which = seq[i];
     on(which); delay(1000);
     off(which); delay(BLINK_RATE);
       // ^ to make the change more obvious
   }
 }
 
+
+void blink(int which, int amount){
+  int i;
+  for (i = 0; i < amount; i++){
+    digitalWrite(which, HIGH);
+    delay(BLINK_RATE);
+    digitalWrite(which, LOW);
+    delay(BLINK_RATE);
+  }
+}
+
 void ok(){
-  blinkColor(good, 1);
+  blink(good, 1);
 }
 
 void youWon(){
   blink(good, BLINK_N);
 }
 void gameOver(){
-  blinkColor(bad, BLINK_N);
+  blink(bad, BLINK_N);
 }
 
-void blink(int which, int amount){
-  int i;
-  for (i = 0; i < amount; i++){
-    analogWrite(which, 255);
-    delay(BLINK_RATE);
-  }
-}
 
 
 void onButton(int which){
+  blink(which, 3); return;
   if (!attempting) return;
     // ^ not the right time, so do nothing
-  
   if (seq[attemptIx] == which) {
     ok();
     attemptIx = (attemptIx + 1) % N;
@@ -104,20 +111,31 @@ void onButton(int which){
     gameOver();
     restart = true; // game restarted
   }
+}
 
-
-void onRedButton() {onButton(red)};
-void onYellowButton() {onButton(yellow)};
+void onRedButton() {
+  //digitalWrite(red, HIGH);
+  onButton(red);
+}
+void onYellowButton() {
+  //digitalWrite(yellow, HIGH);
+  onButton(yellow);
+}
 
 //:::::::::::::::::::::
 
 void setup(){
+  srand(time(NULL));
   pinMode(red, OUTPUT);
   pinMode(yellow, OUTPUT);
   pinMode(bad, OUTPUT);
   pinMode(good, OUTPUT);
+  pinMode(bYellow, INPUT);
+  //pinMode(bRed, INPUT_PULLUP);
   attachInterrupt(iYellow, onYellowButton, RISING);
   attachInterrupt(iRed, onRedButton, RISING);
+  //Serial.begin(9600);
+  //digitalWrite(red, LOW);
 }
 
 void loop(){
@@ -125,7 +143,8 @@ void loop(){
   newSeq();
   showSeq();
   attempting = true;
-  while (!restart) {}
+  while (!restart) {//blink(good, 5);
+    }
     // ^ stuck till the attempt ends
     // either via youWon or gameOver
 }
