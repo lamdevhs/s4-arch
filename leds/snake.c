@@ -43,7 +43,6 @@ void blank() {
   }
 }
 
-enum state
 
 typedef struct pix {
   int x;
@@ -67,7 +66,11 @@ int fruitLife = 0;
 Pix stones[60];
 int stonesN;
 
-int isGameOver = 0;
+
+enum States {
+  Init, GameOver, Normal
+};
+volatile int state = Init;
 
 enum DIR {
   LEFT,
@@ -128,7 +131,6 @@ int moveSnake() {
 }
 
 void gameOver() {
-  isGameOver = 1;
   int i, j;
   for (i = 0; i < 8; i++) {
     for (j = 0; j < 8; j++) {
@@ -147,15 +149,17 @@ void showSnake(uint16_t color) {
 
 void btnClockwise(){
   if (alreadyPressed) return;
+  if (state == GameOver) state = Init;
+  else dir = (dir + 1) % 4;
   alreadyPressed = 1;
-  dir = (dir + 1) % 4;
+  
 }
 
 void btnCounterClockwise(){
   if (alreadyPressed) return;
+  if (state == GameOver) state = Init;
+  else dir = (dir + 3) % 4;
   alreadyPressed = 1;
-  dir = (dir + 3) % 4;
-
 }
 
 void showFruit() {
@@ -187,7 +191,6 @@ void newFruit() {
   fruitX = (fruitY + 1999) % 8;
   fruitY = (fruitX + 1999) % 8;
   fruitLife = 0;
-  showFruit();
 }
 
 void checkFruit(){
@@ -205,25 +208,32 @@ void setup() {
   attachInterrupt(1, btnCounterClockwise, FALLING);
   matrix.begin();
   matrix.setBrightness(10);
-  blank();
-  showSnake(colors[1]);
-  showFruit();
-  matrix.show();
-  delay(FREQ);
-  fruitLife += 1;
+  
 }
 
 void loop() {
   if (state == GameOver) gameOver();
-  else if (state == init) {
-    
+  else if (state == Init) {
+    blank();
+    serpSize = 1;
+    *serpX = *serpY = 3;
+    showSnake(colors[1]);
+    stonesN = 0;
+    newFruit();
+    showFruit();
+    matrix.show();
+    state = Normal;
   }
   else {
     showSnake(0); //erase snake
     int res = moveSnake();
-    if (res == -1) gameOver();
+    if (res == -1) {
+      state = GameOver;
+      gameOver();
+    }
     else {
       checkFruit();
+      showFruit();
       showSnake(colors[1]);
     }
     if (fruitLife == 15) {
