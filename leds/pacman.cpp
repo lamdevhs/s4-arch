@@ -44,7 +44,8 @@ enum {
   YELLOW,
   CYAN,
   MAGENTA,
-  NONE
+  NONE,
+  WHITE,
 };
 
 const uint16_t colors[] = {
@@ -54,12 +55,16 @@ const uint16_t colors[] = {
   matrix.Color(255, 255, 0),
   matrix.Color(0, 255, 255),
   matrix.Color(255, 0, 255),
-  matrix.Color(0, 0, 0)
+  matrix.Color(0, 0, 0),
+  matrix.Color(255,255,255)
 };
 
 
-int pacmanColor = YELLOW;
-int obstacleColor = BLUE;
+int pacmanColor = BLUE;
+int wallColor = RED;
+int ghostColor = WHITE;
+int fruitColor = GREEN;
+int bugColor = MAGENTA;
 
 
 
@@ -80,37 +85,116 @@ typedef struct pix {
   int y;
 } Pix;
 
+#define MAXMAP 3
 #define MAXGHOSTS 6
-#define MAXOBSTACLES 100
+#define MAXOBSTACLES MAXMAP*MAXMAP
+#define MAXFRUITS MAXMAP*MAXMAP
 
+enum
+{
+  GHOST,
+  GHOST_FRUIT,
+  FRUIT,
+  NOTHING,
+  WALL,
+  PACMAN
+};
 
-int sizeMapX = 10;
-int sizeMapY = 10;
+int sizeMapX = MAXMAP;
+int sizeMapY = MAXMAP;
+
+int gameMap[MAXMAP][MAXMAP];
+
 Pix ghosts[MAXGHOSTS];
 int nghosts = 0;
+int nfruits = 0;
 
-Pix obstacles[MAXOBSTACLES];
-int nobstacles = 0;
-volatile int pacY = 1;
-volatile int pacX = 1;
+volatile int pacY = 0;
+volatile int pacX = 0;
 
 #define PACX_REAL 4
 #define PACY_REAL 4
 
 
 void buildMap() {
+  int x, y;
+  emptyMap();
+  //addWalls();
+  addPacman(0,0);
+  addFruits();
+}
+
+void emptyMap() {
+  int x, y;
+  for (x = 0; x < sizeMapX; x++) {
+    for (y = 0; y < sizeMapY; y++) {
+      addPoint(x, y, NOTHING);
+    } 
+  }
+}
+
+void addFruits() {
+  int x, y;
+  for (x = 0; x < sizeMapX; x++) {
+    for (y = 0; y < sizeMapY; y++) {
+      if (gameMap[x][y] == NOTHING) {
+        addPoint(x, y, FRUIT);
+        nfruits++;
+      }
+    }
+  }
+}
+
+void addWalls() {
+  int x, y;
+  for (x = 0; x < sizeMapX; x++) {
+    for (y = 0; y < sizeMapY; y++) {
+      if (x % 2 == 1 && y % 2 == 1) {
+        addPoint(x, y, WALL);
+      }
+    } 
+  }
+}
+
+void addPacman(int x, int y) {
+  addPoint(x, y, PACMAN);
+  pacX = x;
+  pacY = y;
+}
+
+void addWall(int xStart, int yStart, int xEnd, int yEnd) {
+  if (xStart != xEnd && yStart != yEnd) return; // wrong input
+  int isHorizontal = yStart == yEnd;
+  int length;
+  if (isHorizontal) {
+    if (xStart > xEnd) {
+      int tmp = xStart;
+      xStart = xEnd;
+      xEnd = tmp;
+    }
+    length = xEnd - xStart + 1;
+  }
+  else {
+    if (yStart > yEnd) {
+      int tmp = yStart;
+      yStart = yEnd;
+      yEnd = tmp;
+    }
+    length = yEnd - yStart + 1;
+  }
   int i;
-  nobstacles = 0;
-  for (i = 0; i < sizeMapX && nobstacles < MAXOBSTACLES; i++) {
-    obstacles[nobstacles].x = i;
-    obstacles[nobstacles].y = 0;
-    ++nobstacles;
+  for (i = 0; i < length; i++) {
+    addPoint(
+      xStart + isHorizontal*i,
+      yStart + (1-isHorizontal)*i,
+      WALL);
   }
-  for (i = 1; i < sizeMapY - 1 && nobstacles < MAXOBSTACLES; i++) {
-    obstacles[nobstacles].x = 0;
-    obstacles[nobstacles].y = i;
-    ++nobstacles;
-  }
+}
+
+void addPoint(int x, int y, int type) {
+  if (x < 0 || x >= MAXMAP
+   || y < 0 || y >= MAXMAP) return;
+  gameMap[x][y] = type;
 }
 
 
@@ -144,15 +228,16 @@ volatile int alreadyPressed = 0;
   // frequency of the game
   // aka time unit of the game, in ms
 
+enum {
+  WON, LOST
+};
 
-// prints a very angry, very red matrix
-// of very angry red leds
-void gameOver() {
-  unicolor(colors[RED]);
+void gameOver(int hasWon) {
+  unicolor(colors[hasWon == WON ? GREEN : RED]);
 }
 
 void BUG() {
-  unicolor(colors[BLUE]);
+  unicolor(colors[bugColor]);
 }
 
 void interr(int dir){
@@ -168,17 +253,12 @@ void iRight(){ interr(Right);}
 void iUp()   { interr(Up);}
 void iDown() { interr(Down);}
 
-int collisionDetected(int x, int y){
+int isMoveImpossible(int x, int y){
   if (x < 0 || y < 0 || x >= sizeMapX || y >= sizeMapY) {
     return 1;
   }
-
-  int i = 0;
-  for (i = 0; i < nobstacles; i++) {
-    if (obstacles[i].x == x && obstacles[i].y == y) {
-      return 1; 
-    }
-  }
+  int there = gameMap[x][y];
+  if (there != FRUIT && there != NOTHING) return 1;
   return 0;
 }
 
@@ -195,26 +275,51 @@ void movePacman() {
   int tempY = pacY;
   movePos(movdir, &tempX, &tempY);
 
-  if (collisionDetected(tempX, tempY)) return;
+  if (isMoveImpossible(tempX, tempY)) return;
     // we don't move coz we can't move
 
+  addPoint(pacX, pacY, NOTHING);
   pacX = tempX;
   pacY = tempY;
+  if (gameMap[pacX][pacY] == FRUIT) {
+    nfruits -= 1;
+  }
+  addPoint(pacX, pacY, PACMAN);
+
+}
+
+int colorizeMap(int type) {
+  switch(type) {
+    case FRUIT: return fruitColor;
+    case GHOST:
+    case GHOST_FRUIT: return ghostColor;
+    case PACMAN: return pacmanColor;
+    case NOTHING: return NONE;
+    case WALL: return wallColor;
+    default: return bugColor;
+  }
 }
 
 void showAll() {
-  int i;
-  for (i = 0; i < nobstacles; i++) {
-    int realX = realPosX(obstacles[i].x);
-    int realY = realPosY(obstacles[i].y);
-    if (realX != -1 && realY != -1) {
-      matrix.drawPixel(realX, realY,
-        colors[obstacleColor]);
+  int x, y;
+  for (x = 0; x < MATX; x++) {
+    for (y = 0; y < MATY; y++) {
+      int virtX = virtPosX(x);
+      int virtY = virtPosY(y);
+      int color;
+      if (virtX == -1 || virtY == -1) {
+        color = wallColor;
+      }
+      else {
+        int type = gameMap[virtX][virtY];
+        color = colorizeMap(type);
+      }
+      matrix.drawPixel(x, y,
+        colors[color]);
     }
-
   }
-  matrix.drawPixel(PACX_REAL, PACY_REAL,
-    colors[pacmanColor]);
+  // matrix.drawPixel(PACX_REAL, PACY_REAL,
+  //   colors[pacmanColor]);
 }
 
 int realPosX(int x) {
@@ -228,9 +333,19 @@ int realPosY(int y) {
   else return val;
 }
 
+int virtPosX(int realX){
+  int val = realX + pacX - PACX_REAL;
+  if (val < 0 || val >= MAXMAP) return -1;
+  else return val;
+}
+int virtPosY(int realY){
+  int val = realY + pacY - PACY_REAL;
+  if (val < 0 || val >= MAXMAP) return -1;
+  else return val;
+}
+
 void setup() {
   srand(time(NULL));
-  buildMap();
   pinMode(pinLeft, INPUT_PULLUP);
   pinMode(pinRight, INPUT_PULLUP);
   pinMode(pinUp, INPUT_PULLUP);
@@ -240,22 +355,27 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(pinUp), iUp, FALLING);
   attachInterrupt(digitalPinToInterrupt(pinDown), iDown, FALLING);
   matrix.begin();
-  matrix.setBrightness(10);
+  matrix.setBrightness(1);
 }
 
 void loop() {
-  if (state == GameOver)
-    gameOver();
+  if (state == GameOver) {}
   else if (state == Init) {
     unicolor(colors[NONE]);
+    buildMap();
     showAll();
     matrix.show();
     state = Normal;
+
   }
-  else {
+  else { // Normal state
     unicolor(colors[NONE]);
     movePacman();
     showAll();
+    if (nfruits == 0) {
+      gameOver(WON);
+      state = GameOver;
+    }
   }
   matrix.show();
   alreadyPressed = 0;
