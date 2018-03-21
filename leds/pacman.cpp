@@ -23,6 +23,8 @@
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 
+#define STATIC 0
+
 #define MATX 8
 #define MATY 8
 
@@ -61,6 +63,7 @@ const uint16_t colors[] = {
 
 
 int pacmanColor = BLUE;
+int nothingColor = NONE;
 int wallColor = RED;
 int ghostColor = WHITE;
 int fruitColor = GREEN;
@@ -85,7 +88,7 @@ typedef struct pix {
   int y;
 } Pix;
 
-#define MAXMAP 3
+#define MAXMAP 8
 #define MAXGHOSTS 6
 #define MAXOBSTACLES MAXMAP*MAXMAP
 #define MAXFRUITS MAXMAP*MAXMAP
@@ -105,56 +108,122 @@ int sizeMapY = MAXMAP;
 
 int gameMap[MAXMAP][MAXMAP];
 
-Pix ghosts[MAXGHOSTS];
+typedef struct ghost {
+  int x;
+  int y;
+  int dir;
+} Ghost;
+
+Ghost ghosts[MAXGHOSTS];
 int nghosts = 0;
 int nfruits = 0;
 
 volatile int pacY = 0;
 volatile int pacX = 0;
 
-#define PACX_REAL 4
-#define PACY_REAL 4
+int PACX_REAL = 4;
+int PACY_REAL = 4;
 
+
+char strmap[] =
+  "......../"
+  ".C.....G"
+  "..#.#.##"
+  "#.#....."
+  "....#..#"
+  "#.#...#."
+  "..#.#G.#"
+  "#.....##";
+
+// char strmap[] =
+//   "#############/"
+//   "#C..#...#..G#"
+//   "#.#.#..##...#"
+//   "#.#.#.....#.#"
+//   "#...#..##.#.#"
+//   "#.#..G.#.G..#"
+//   "#.###...#.#.#"
+//   "#......##...#"
+//   "#############";
 
 void buildMap() {
   int x, y;
   emptyMap();
-  //addWalls();
-  addPacman(0,0);
-  addFruits();
+  readMap(strmap);
+}
+
+void readMap(char *map) {
+  nghosts = 0; //(re)initializes the variable
+  int i;
+  int line = 0;
+  int col = 0;
+  int pacmanAdded = 0;
+  int linesize = -1;
+  int lineSizeKnown = 0;
+  for (i = 0; map[i] != '\0' && line < MAXMAP; i++, col++) {
+    char c = map[i];
+    int typeHere;
+    if (col == linesize) {
+      col = 0;
+      line += 1;
+    }
+    if (c == '/') {
+      if (lineSizeKnown) continue; //ignore it
+      else {
+        lineSizeKnown = 1;
+        linesize = i;
+        col = 0;
+        line += 1;
+        continue;
+      }
+    }
+    switch (c) {
+      case '#': typeHere = WALL; break;
+      case 'G': typeHere = GHOST; break;
+      case '.': typeHere = FRUIT; nfruits++; break;
+      default: typeHere = NOTHING; break;
+    }
+    if (c == 'C' && !pacmanAdded) {
+      addPacman(line, col); continue;
+    }
+    if (c == 'G' && nghosts < MAXGHOSTS) {
+      addGhost(line, col); continue;
+    }
+    addPoint(line, col, typeHere);
+  }
 }
 
 void emptyMap() {
   int x, y;
   for (x = 0; x < sizeMapX; x++) {
     for (y = 0; y < sizeMapY; y++) {
-      addPoint(x, y, NOTHING);
+      addPoint(x, y, WALL);
     } 
   }
 }
 
-void addFruits() {
-  int x, y;
-  for (x = 0; x < sizeMapX; x++) {
-    for (y = 0; y < sizeMapY; y++) {
-      if (gameMap[x][y] == NOTHING) {
-        addPoint(x, y, FRUIT);
-        nfruits++;
-      }
-    }
-  }
-}
+// void addFruits() {
+//   int x, y;
+//   for (x = 0; x < sizeMapX; x++) {
+//     for (y = 0; y < sizeMapY; y++) {
+//       if (gameMap[x][y] == NOTHING) {
+//         addPoint(x, y, FRUIT);
+//         nfruits++;
+//       }
+//     }
+//   }
+// }
 
-void addWalls() {
-  int x, y;
-  for (x = 0; x < sizeMapX; x++) {
-    for (y = 0; y < sizeMapY; y++) {
-      if (x % 2 == 1 && y % 2 == 1) {
-        addPoint(x, y, WALL);
-      }
-    } 
-  }
-}
+// void addWalls() {
+//   int x, y;
+//   for (x = 0; x < sizeMapX; x++) {
+//     for (y = 0; y < sizeMapY; y++) {
+//       if (x % 2 == 1 && y % 2 == 1) {
+//         addPoint(x, y, WALL);
+//       }
+//     } 
+//   }
+// }
 
 void addPacman(int x, int y) {
   addPoint(x, y, PACMAN);
@@ -162,34 +231,47 @@ void addPacman(int x, int y) {
   pacY = y;
 }
 
-void addWall(int xStart, int yStart, int xEnd, int yEnd) {
-  if (xStart != xEnd && yStart != yEnd) return; // wrong input
-  int isHorizontal = yStart == yEnd;
-  int length;
-  if (isHorizontal) {
-    if (xStart > xEnd) {
-      int tmp = xStart;
-      xStart = xEnd;
-      xEnd = tmp;
-    }
-    length = xEnd - xStart + 1;
+void addGhost(int x, int y) {
+  if (nghosts >= MAXGHOSTS) {
+    addPoint(x, y, NOTHING);
+    return;
   }
-  else {
-    if (yStart > yEnd) {
-      int tmp = yStart;
-      yStart = yEnd;
-      yEnd = tmp;
-    }
-    length = yEnd - yStart + 1;
-  }
-  int i;
-  for (i = 0; i < length; i++) {
-    addPoint(
-      xStart + isHorizontal*i,
-      yStart + (1-isHorizontal)*i,
-      WALL);
-  }
+  // else
+  addPoint(x, y, GHOST);
+  ghosts[nghosts].x = x;
+  ghosts[nghosts].y = y;
+  ghosts[nghosts].dir = nghosts % 4;
+  nghosts++;
 }
+
+// void addWall(int xStart, int yStart, int xEnd, int yEnd) {
+//   if (xStart != xEnd && yStart != yEnd) return; // wrong input
+//   int isHorizontal = yStart == yEnd;
+//   int length;
+//   if (isHorizontal) {
+//     if (xStart > xEnd) {
+//       int tmp = xStart;
+//       xStart = xEnd;
+//       xEnd = tmp;
+//     }
+//     length = xEnd - xStart + 1;
+//   }
+//   else {
+//     if (yStart > yEnd) {
+//       int tmp = yStart;
+//       yStart = yEnd;
+//       yEnd = tmp;
+//     }
+//     length = yEnd - yStart + 1;
+//   }
+//   int i;
+//   for (i = 0; i < length; i++) {
+//     addPoint(
+//       xStart + isHorizontal*i,
+//       yStart + (1-isHorizontal)*i,
+//       WALL);
+//   }
+// }
 
 void addPoint(int x, int y, int type) {
   if (x < 0 || x >= MAXMAP
@@ -285,7 +367,66 @@ void movePacman() {
     nfruits -= 1;
   }
   addPoint(pacX, pacY, PACMAN);
+  if (STATIC) {
+    PACX_REAL = pacX;
+    PACY_REAL = pacY;
+  }
+}
 
+int moveGhosts() {
+  int i;
+  for (i = 0; i < nghosts; i++) {
+    int theEnd = moveGhost(i);
+    if (theEnd) return 1;
+  }
+  return 0;
+}
+
+int moveGhost(int g) {
+  int dir = ghosts[g].dir;
+  int x = ghosts[g].x;
+  int y = ghosts[g].y;
+  int newX, newY;
+  int newdir; int n = 0;
+  for (newdir = dir; n < 4; newdir = (newdir+1)%4) {
+    if (n != 0 && newdir == dir) {
+      continue;
+    }
+    newX = x; newY = y;
+    movePos(newdir, &newX, &newY);
+    if (newX == pacX && newY == pacY) {
+      return 1; // game over
+    }
+    if (!isMoveImpossible(newX, newY)) {
+      ghosts[g].dir = newdir;
+      break;
+    }
+    if (n == 0) {
+      newdir = rand();
+    }
+    n++;
+  }
+  if (n == 4) { // we failed to find a proper direction
+      return 0; // we return without moving
+  }
+  // else
+
+  if (gameMap[newX][newY] == FRUIT) {
+    addPoint(newX, newY, GHOST_FRUIT);
+  }
+  else {
+    addPoint(newX, newY, GHOST);
+  }
+
+  if (gameMap[x][y] == GHOST_FRUIT) {
+    addPoint(x, y, FRUIT);
+  }
+  else {
+    addPoint(x, y, NOTHING);
+  }
+  ghosts[g].x = newX;
+  ghosts[g].y = newY;
+  return 0;
 }
 
 int colorizeMap(int type) {
@@ -294,7 +435,7 @@ int colorizeMap(int type) {
     case GHOST:
     case GHOST_FRUIT: return ghostColor;
     case PACMAN: return pacmanColor;
-    case NOTHING: return NONE;
+    case NOTHING: return nothingColor;
     case WALL: return wallColor;
     default: return bugColor;
   }
@@ -355,7 +496,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(pinUp), iUp, FALLING);
   attachInterrupt(digitalPinToInterrupt(pinDown), iDown, FALLING);
   matrix.begin();
-  matrix.setBrightness(1);
+  matrix.setBrightness(10);
 }
 
 void loop() {
@@ -365,13 +506,19 @@ void loop() {
     buildMap();
     showAll();
     matrix.show();
+    movdir = Right;
     state = Normal;
 
   }
   else { // Normal state
     unicolor(colors[NONE]);
     movePacman();
+    int theEnd = moveGhosts();
     showAll();
+    if (theEnd) {
+      gameOver(LOST);
+      state = GameOver;
+    }
     if (nfruits == 0) {
       gameOver(WON);
       state = GameOver;
