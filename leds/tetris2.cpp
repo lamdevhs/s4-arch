@@ -32,7 +32,7 @@ int pinLeft = 19;
 int pinRight = 3;
 int pinUp = 2;
 int pinDown = 18;
-int donnees= 53;
+int donnees= 13;
 
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATX, MATY, donnees,
   NEO_MATRIX_TOP     + NEO_MATRIX_RIGHT +
@@ -257,7 +257,7 @@ void newPiece() {
   currentPiece = 0;
   pieceX = MATX - 1;
   pieceY = MATY - 1;
-  orient = 0;
+  orient = 2;
 }
 
 
@@ -267,9 +267,36 @@ void showPiece() {
   int* pieceModel = pieces[currentPiece][orient];
   if (orient % 2 == 0) {
     for (i = 0; i < 6; i++) {
-      int x = i / 3;
-      int y = i % 3;
-      matrix.drawPixel(pieceX - x, pieceX - y, colors [pieceModel[0]*color]);
+      int y = i / 3;
+      int x = i % 3;
+      matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+    }
+  }
+  else {
+    for (i = 0; i < 6; i++) {
+      int y = i / 2;
+      int x = i % 2;
+      matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+    }
+  }
+}
+
+void checkCollision(int orient) {
+  int color = 1+currentPiece;
+  int i;
+  int* pieceModel = pieces[currentPiece][orient];
+  if (orient % 2 == 0) {
+    for (i = 0; i < 6; i++) {
+      int y = i / 3;
+      int x = i % 3;
+      matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+    }
+  }
+  else {
+    for (i = 0; i < 6; i++) {
+      int y = i / 2;
+      int x = i % 2;
+      matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
     }
   }
 }
@@ -299,9 +326,8 @@ void loop() {
       state = GameOver;
     }
     */
+    orient = (orient + 1) % 4;
     unicolor(colors[RED]);
-    newStack();
-    newPiece();
     showAll();
   }
   matrix.show();
