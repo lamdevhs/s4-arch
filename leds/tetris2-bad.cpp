@@ -173,19 +173,6 @@ int movePos(int dir, int *x, int *y) {
 }
 
 
-void setup() {
-  srand(time(NULL));
-  pinMode(pinLeft, INPUT_PULLUP);
-  pinMode(pinRight, INPUT_PULLUP);
-  pinMode(pinUp, INPUT_PULLUP);
-  pinMode(pinDown, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(pinLeft), iLeft, FALLING);
-  attachInterrupt(digitalPinToInterrupt(pinRight), iRight, FALLING);
-  attachInterrupt(digitalPinToInterrupt(pinUp), iUp, FALLING);
-  attachInterrupt(digitalPinToInterrupt(pinDown), iDown, FALLING);
-  matrix.begin();
-  matrix.setBrightness(10);
-}
 
 enum {
   EMPTY = 0,
@@ -211,143 +198,185 @@ void showStack() {
     }
   }
 }
-#define NPIECES 6
+#define NPIECES 7
 
-int pieces[NPIECES][4][6] = {
-  // L
-  {
-    {1, 1, 1,
-     1, 0, 0 },
+int pieces[NPIECES][6] = {
+    // {1, 2, 3,
+    //  4, 5, 6 },
 
-    {1, 0,
-     1, 0,
-     1, 1 },
-
-    {0, 0, 1,
-     1, 1, 1 },
-
-    {1, 1,
-     0, 1,
-     0, 1 }
-  },
-  // square
-  {
-    {1, 1, 0,
-     1, 1, 0 },
-
-    {1, 1,
-     1, 1,
-     0, 0 },
-
-    {1, 1, 0,
-     1, 1, 0 },
-
-    {1, 1,
-     1, 1,
-     0, 0 }
-  }
+// L
+  {1, 1, 1,
+   1, 0, 0 },
+// SQUARE
+  {1, 1, 0,
+   1, 1, 0 },
+// inverted L
+  {1, 1, 1,
+   0, 0, 1 },
+// Line
+  {1, 1, 1,
+   0, 0, 0 },
+// S
+  {0, 1, 1,
+   1, 1, 0 },
+// Z
+  {1, 1, 0,
+   0, 1, 1 },
+// T
+  {1, 1, 1,
+   0, 1, 0 }
 };
 
 int pieceX = 0;
 int pieceY = 0;
-int currentPiece = 0;
+int currentPiece[6] = {0,0,0,0,0,0};
 int orient = 0;
 
-void newPiece() {
-  currentPiece = 0;
-  pieceX = MATX - 1;
+void newPiece(int newPieceIx) {
+  int i;
+  for (i = 0; i < 6; i++) {
+    currentPiece[i] = pieces[newPieceIx % NPIECES][i];
+  }
+  pieceX = MATX - 4;
   pieceY = MATY - 1;
-  orient = 2;
+  orient = 0;
 }
 
+void moveClockwise(int* piece, int orient) {
+  int a = piece[0];
+  int b = piece[1];
+  int c = piece[2];
+  int d = piece[3];
+  int e = piece[4];
+  int f = piece[5];
+  if (orient % 2 == 0) {
+    // [a b c]      [d a]
+    // [d e f] ---> [e b]
+    //              [f c]
+    // cad
+    // [a b c d e f] -> [d a e b f c]
+    piece[0] = d;
+    piece[1] = a;
+    piece[2] = e;
+    piece[3] = b;
+    piece[4] = f;
+    piece[5] = c;
+  }
+  else {
+    // [a b]      [e c a]
+    // [c d] ---> [f d b]
+    // [e f]
+    // cad
+    // [a b c d e f] -> [e c a f d b]
+    piece[0] = e;
+    piece[1] = c;
+    piece[2] = a;
+    piece[3] = f;
+    piece[4] = d;
+    piece[5] = b;
+  }
+}
+
+// counter-clockwise
+void moveCClockwise(int *piece, int orient) {
+  moveClockwise(piece, !!orient);
+  moveClockwise(piece, !orient);
+  moveClockwise(piece, !!orient);
+}
 
 void showPiece() {
-  int color = 1+currentPiece;
+  int color = 1;
   int i;
-  int* pieceModel = pieces[currentPiece][orient];
   if (orient % 2 == 0) {
+    Serial.println(
+      3000 +
+      100*currentPiece[0] +
+      10*currentPiece[1] +
+      currentPiece[2]);
+    Serial.println(
+      3000 +
+      100*currentPiece[3] +
+      10*currentPiece[4] +
+      currentPiece[5]);
+
+
     for (i = 0; i < 6; i++) {
       int y = i / 3;
       int x = i % 3;
-      matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+      matrix.drawPixel(pieceX - x, pieceY - y, colors[currentPiece[i]*color]);
     }
   }
   else {
+    Serial.println(
+      300 +
+      10*currentPiece[0] +
+      currentPiece[1]);
+    Serial.println(
+      300 +
+      10*currentPiece[2] +
+      currentPiece[3]);
+    Serial.println(
+      300 +
+      10*currentPiece[4] +
+      currentPiece[5]);
+
+
     for (i = 0; i < 6; i++) {
       int y = i / 2;
       int x = i % 2;
-      matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+      matrix.drawPixel(pieceX - x, pieceY - y, colors[currentPiece[i]*color]);
     }
   }
 }
 
-void addPieceToStack(){ // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
-  int i;
-  int* pieceModel = pieces[currentPiece][orient];
-  if (orient % 2 == 0) {
-    for (i = 0; i < 6; i++) {
-      int y = i / 3;
-      int x = i % 3;
-      stack[pieceX - x][pieceX - y] = stackColor;
-    }
-  }
-  else {
-    for (i = 0; i < 6; i++) {
-      int y = i / 2;
-      int x = i % 2;
-      stack[pieceX - x][pieceX - y] = stackColor;
-    }
-  }
-}
-
-int moveDown() {
-  pieceY -= 1;
-  if (collision) {
-    pieceY +=1;
-    addPieceToStack();
-    newPiece();
-  }
-}
-
-int collision(int orient) {
-  int i;
-  int* pieceModel = pieces[currentPiece][orient];
-  if (orient % 2 == 0) {
-    for (i = 0; i < 6; i++) {
-      int y = i / 3;
-      int x = i % 3;
-      if (oneCollision(pieceX - x, pieceX - y)) {
-        return 1;
-      }
-    }
-  }
-  else {
-    for (i = 0; i < 6; i++) {
-      int y = i / 2;
-      int x = i % 2;
-      if (oneCollision(pieceX - x, pieceX - y)) {
-        return 1;
-      }
-    }
-  }
-  return 0;
-}
-
-int oneCollision(int x, int y) {
-  return (stack[x][y] != NONE);
-}
+// void checkCollision(int orient) {
+//   int color = 1+currentPiece;
+//   int i;
+//   int* pieceModel = pieces[currentPiece][orient];
+//   if (orient % 2 == 0) {
+//     for (i = 0; i < 6; i++) {
+//       int y = i / 3;
+//       int x = i % 3;
+//       matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+//     }
+//   }
+//   else {
+//     for (i = 0; i < 6; i++) {
+//       int y = i / 2;
+//       int x = i % 2;
+//       matrix.drawPixel(pieceX - x, pieceX - y, colors[pieceModel[i]*color]);
+//     }
+//   }
+// }
 
 void showAll() {
   showStack();
-  showPiece();
+  showPiece(); 
 }
+
+void setup() {
+  srand(time(NULL));
+  pinMode(pinLeft, INPUT_PULLUP);
+  pinMode(pinRight, INPUT_PULLUP);
+  pinMode(pinUp, INPUT_PULLUP);
+  pinMode(pinDown, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(pinLeft), iLeft, FALLING);
+  attachInterrupt(digitalPinToInterrupt(pinRight), iRight, FALLING);
+  attachInterrupt(digitalPinToInterrupt(pinUp), iUp, FALLING);
+  attachInterrupt(digitalPinToInterrupt(pinDown), iDown, FALLING);
+  matrix.begin();
+  Serial.begin(9600);
+  matrix.setBrightness(10);
+}
+
+int cpt = 0;
 
 void loop() {
   if (state == GameOver) {}
   else if (state == Init) {
     unicolor(colors[GREEN]);
     newStack();
-    newPiece();
+    newPiece(cpt++);
     showAll();
     state = Normal;
   }
@@ -361,9 +390,13 @@ void loop() {
       state = GameOver;
     }
     */
+    moveClockwise(currentPiece, orient);
     orient = (orient + 1) % 4;
-    unicolor(colors[RED]);
+    unicolor(colors[GREEN]);
     showAll();
+    if (orient == 0) {
+      newPiece(++cpt);
+    }
   }
   matrix.show();
   alreadyPressed = 0;
